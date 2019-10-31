@@ -1,0 +1,173 @@
+<project name="Toolkit" default="Installation" basedir=".">
+
+  <!-- oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo -->
+  <!-- oooooooooooooooooooooooooo  Dependencies  oooooooooooooooooooooooooo -->
+  <!-- oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo -->
+
+  <import file="${projectsDir}/FgpUtil/build.xml" />
+
+
+  <!-- oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo -->
+  <!-- oooooooooooooooooooooooooo  Installation  oooooooooooooooooooooooooo -->
+  <!-- oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo -->
+
+  <target name="Toolkit-Installation"
+	  depends="Toolkit/Colocalization-Installation,
+Toolkit/TADs-Installation,
+Toolkit/Utils-Installation">
+
+    <ant target="defaultProjectInstall">
+      <property name="project" value="Toolkit" />
+    </ant>
+  </target>
+
+  <target name="Toolkit-MavenInstallation">
+    <ant target="mavenBuildProject">
+      <property name="project" value="Toolkit" />
+    </ant>
+    <property name="alreadyBuilt" value="true" />
+  </target>
+
+  <!-- ooooooooooooooooooooooo  Install Components  ooooooooooooooooooooooo -->
+
+  <target name="Toolkit/Utils-Installation">
+    <ant target="defaultComponentInstall">
+      <property name="project" value="Toolkit" />
+      <property name="component" value="Utils" />
+    </ant>
+  </target>
+  
+  <target name="Toolkit/Colocalization-Installation" depends="Toolkit/Utils-Installation">
+    <ant target="defaultComponentInstall">
+      <property name="project" value="Toolkit" />
+      <property name="component" value="Colocalization" />
+    </ant>
+  </target>
+
+ 
+
+  <target name="Toolkit/TADs-Installation" depends="Toolkit/Utils-Installation">
+    <ant target="defaultComponentInstall">
+      <property name="project" value="Toolkit" />
+      <property name="component" value="TADs" />
+    </ant>
+  </target>
+
+  
+
+
+  <!-- oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo -->
+  <!-- oooooooooooooooooooooooo  Web Installation  oooooooooooooooooooooooo -->
+  <!-- oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo -->
+
+
+  <target name="Toolkit-WebInstallation" depends="verifyWebPropFile,
+                                              Toolkit-Installation,
+                                              Toolkit/Service-WebInstallation">
+
+    <available file="${webappTargetDir}/WEB-INF/wsf-config" type="dir"
+               property="wsf-config.exist" />
+    <available file="${webappTargetDir}/WEB-INF/lib" type="dir"
+               property="lib.exist" />
+    <available file="${webappTargetDir}/WEB-INF/web.xml"
+               property="web.xml.exist" />
+
+    <!-- create necessary directory structure -->
+    <mkdir dir="${webappTargetDir}/WEB-INF/" />
+
+    <antcall target="createLibLink" />
+    <antcall target="createConfigLink" />
+    <!--
+        <antcall target="copyWebXml" />
+    -->
+
+    <!-- copy the log4j.properties to webapp's classes, if necessary -->
+    <available file="${webappTargetDir}/WEB-INF/classes/log4j.xml"
+               property="log4j.webconfig.exist" />
+    <!--
+        <antcall target="copyLog4jWebconfig" />
+    -->
+
+    <!-- use default context.xml, if it does not exist -->
+    <available file="${targetDir}/config/context.xml"
+               property="context.xml.exist" />
+    <antcall target="copyContextXml" />
+
+  </target>
+
+
+  <target name="Toolkit/Service-WebInstallation" depends="Toolkit/Service-Installation">
+
+    <ant target="defaultWebComponentInstall">
+      <property name="project" value="Toolkit" />
+      <property name="component" value="Service" />
+    </ant>
+
+  </target>
+
+
+  <!-- oooooooooooooooooooooooo  Web Installation  oooooooooooooooooooooooo -->
+
+
+  <target name="verifyWebPropFile">
+
+    <fail unless="webappTargetDir">The 'webappTargetDir' is missing from the web
+      property file. Example: /usr/local/tomcat/webapps/axis
+    </fail>
+
+  </target>
+
+
+  <target name="createLibLink" unless="lib.exist">
+    <symlink link="${webappTargetDir}/WEB-INF/lib"
+             resource="${targetDir}/lib/java" />
+  </target>
+
+
+  <target name="createConfigLink" unless="wsf-config.exist">
+    <symlink link="${webappTargetDir}/WEB-INF/wsf-config"
+             resource="${targetDir}/config" />
+  </target>
+
+
+  <target name="copyWebXml" unless="web.xml.exist">
+    <copy file="${webappTargetDir}/WEB-INF/wsf-web.xml"
+          toFile="${webappTargetDir}/WEB-INF/web.xml" />
+  </target>
+
+
+  <target name="copyLog4jWebconfig" unless="log4j.webconfig.exist">
+    <copy file="${targetDir}/config/log4j.xml"
+          toDir="${webappTargetDir}/WEB-INF/classes" />
+  </target>
+
+  <target name="copyContextXml" unless="context.xml.exist">
+    <filter token="targetDir" value="${targetDir}" />
+    <filter token="webappTargetDir" value="${webappTargetDir}" />
+    <copy file="${targetDir}/config/wsf-context.xml.sample"
+          toFile="${targetDir}/config/wsf-context.xml"
+          filtering="true" />
+  </target>
+
+
+  <!-- oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo -->
+  <!-- oooooooooooooooooooooooooooo  Release  ooooooooooooooooooooooooooooo -->
+  <!-- oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo -->
+
+  <target name="Toolkit-Release">
+
+    <echo>"Toolkit-Release" is not supported at this moment.</echo>
+
+  </target>
+
+  <!-- oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo -->
+  <!-- oooooooooooooooooooooooooo  Distributable  ooooooooooooooooooooooooo -->
+  <!-- oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo -->
+
+  <target name="Toolkit-Distributable">
+
+    <echo>"Toolkit-Distributable" is not supported at this moment.</echo>
+
+  </target>
+
+</project>
