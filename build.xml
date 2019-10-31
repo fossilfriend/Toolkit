@@ -4,8 +4,6 @@
   <!-- oooooooooooooooooooooooooo  Dependencies  oooooooooooooooooooooooooo -->
   <!-- oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo -->
 
-  <import file="${projectsDir}/FgpUtil/build.xml" />
-
 
   <!-- oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo -->
   <!-- oooooooooooooooooooooooooo  Installation  oooooooooooooooooooooooooo -->
@@ -61,93 +59,7 @@ Toolkit/Utils-Installation">
   <!-- oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo -->
 
 
-  <target name="Toolkit-WebInstallation" depends="verifyWebPropFile,
-                                              Toolkit-Installation,
-                                              Toolkit/Service-WebInstallation">
-
-    <available file="${webappTargetDir}/WEB-INF/wsf-config" type="dir"
-               property="wsf-config.exist" />
-    <available file="${webappTargetDir}/WEB-INF/lib" type="dir"
-               property="lib.exist" />
-    <available file="${webappTargetDir}/WEB-INF/web.xml"
-               property="web.xml.exist" />
-
-    <!-- create necessary directory structure -->
-    <mkdir dir="${webappTargetDir}/WEB-INF/" />
-
-    <antcall target="createLibLink" />
-    <antcall target="createConfigLink" />
-    <!--
-        <antcall target="copyWebXml" />
-    -->
-
-    <!-- copy the log4j.properties to webapp's classes, if necessary -->
-    <available file="${webappTargetDir}/WEB-INF/classes/log4j.xml"
-               property="log4j.webconfig.exist" />
-    <!--
-        <antcall target="copyLog4jWebconfig" />
-    -->
-
-    <!-- use default context.xml, if it does not exist -->
-    <available file="${targetDir}/config/context.xml"
-               property="context.xml.exist" />
-    <antcall target="copyContextXml" />
-
-  </target>
-
-
-  <target name="Toolkit/Service-WebInstallation" depends="Toolkit/Service-Installation">
-
-    <ant target="defaultWebComponentInstall">
-      <property name="project" value="Toolkit" />
-      <property name="component" value="Service" />
-    </ant>
-
-  </target>
-
-
   <!-- oooooooooooooooooooooooo  Web Installation  oooooooooooooooooooooooo -->
-
-
-  <target name="verifyWebPropFile">
-
-    <fail unless="webappTargetDir">The 'webappTargetDir' is missing from the web
-      property file. Example: /usr/local/tomcat/webapps/axis
-    </fail>
-
-  </target>
-
-
-  <target name="createLibLink" unless="lib.exist">
-    <symlink link="${webappTargetDir}/WEB-INF/lib"
-             resource="${targetDir}/lib/java" />
-  </target>
-
-
-  <target name="createConfigLink" unless="wsf-config.exist">
-    <symlink link="${webappTargetDir}/WEB-INF/wsf-config"
-             resource="${targetDir}/config" />
-  </target>
-
-
-  <target name="copyWebXml" unless="web.xml.exist">
-    <copy file="${webappTargetDir}/WEB-INF/wsf-web.xml"
-          toFile="${webappTargetDir}/WEB-INF/web.xml" />
-  </target>
-
-
-  <target name="copyLog4jWebconfig" unless="log4j.webconfig.exist">
-    <copy file="${targetDir}/config/log4j.xml"
-          toDir="${webappTargetDir}/WEB-INF/classes" />
-  </target>
-
-  <target name="copyContextXml" unless="context.xml.exist">
-    <filter token="targetDir" value="${targetDir}" />
-    <filter token="webappTargetDir" value="${webappTargetDir}" />
-    <copy file="${targetDir}/config/wsf-context.xml.sample"
-          toFile="${targetDir}/config/wsf-context.xml"
-          filtering="true" />
-  </target>
 
 
   <!-- oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo -->

@@ -1,0 +1,196 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""
+A constant-space parser for the GeneOntology OBO v1.2 format
+
+Version 1.0
+"""
+
+from __future__ import print_function
+from __future__ import with_statement
+from collections import defaultdict
+
+from Toolkit.Utils.utils import warning, xstr
+
+def parseSynonyms(synonyms):
+    returnval = ""
+
+    if isinstance(synonyms, list):
+        for s in synonyms:
+            k = s.split('"')
+            returnval = returnval + "," + k[1].strip()
+
+        returnval = returnval[1:] # remove first ,
+
+    else:
+        k = synonyms.split('"')
+        returnval = k[1].strip()
+
+    return returnval
+
+def parseTargetIdFile(filename):
+    with open(filename) as f:
+        lines = f.read().splitlines()
+
+    return lines
+
+def parseDefinition(definitions):
+    if type(definitions) is str:
+        tempstr = definitions.split('"')[1]
+        tempstr.replace('\t', ': ') # get rid of tabs to avoid delimination errors
+        return ' '.join(tempstr.split()) # gets rid of multiple whitespace
+
+    returnval = []
+    for d in definitions:
+        tempstr = d.split('"')[1]
+        tempstr.replace('\t', ': ') # get rid of tabs to avoid delimination errors
+        returnval.append(' '.join(tempstr.split())) # gets rid of multiple whitespace
+        
+    returnval = ";".join(returnval)
+ 
+    return returnval[:3997] + '...' if len(returnval) > 4000 else returnval # truncate
+
+def parseName(name, synonyms):
+    if not isinstance(name, str):
+        for n in name:
+            if synonyms is None:
+                return n
+            if n.lower() not in synonyms.lower():
+                return n
+    else:
+        return name
+
+def parseRelationships(relationships):
+    returnval = []
+    
+    if isinstance(relationships, str):
+        returnval = [relationships.split(' ! ')[1]] if '!' in relationships else None
+    else:
+        for r in relationships:
+            if '!' in r: 
+                returnval.append(r.split(' ! ')[1]) # term
+ 
+    return returnval
+
+def printRelationships(term, relationships, fh):
+    for r in relationships:
+        print("\t".join((term, xstr(args.xdbrId), r, xstr(args.xdbrId), 'is_a', xstr(args.relXdbrId))), file=fh)
+
+    
+def obo2text():
+    targetIds = None if args.termFile is None \
+                else parseTargetIdFile(args.termFile)
+   
+    terms = parseOboFile(args.obofile)
+
+    termFile = None
+    relFile = None
+
+    if not args.countOnly:
+        termFile = open(args.prefix + '-terms.txt', 'w')
+        if args.relationships:
+              relFile = open(args.prefix + '-relationships.txt', 'w')
+              print("\t".join(('subject', 'subject_xdbr_id', 'object', 'object_xdbr_id', 'relationship_type', 'relationship_type_xdbr_id')), file=relFile)
+
+    count = 0
+    for t in terms:
+        termId = t['id']
+
+        if targetIds:
+            if termId not in targetIds:
+                continue
+
+        count = count + 1
+
+        if not args.countOnly:
+            name = t['name']        
+            
+            if args.ignoreSynonyms:
+                synonyms = None
+            else:
+                synonyms = parseSynonyms(t['synonym']) if 'synonym' in t else None
+
+            name = parseName(name, synonyms) # handle name lists
+
+            is_obsolete = t['is_obsolete'] if 'is_obsolete' in t else 'false'
+            definition = parseDefinition(t['def']) if 'def' in t else None
+            
+            is_a = parseRelationships(t['is_a']) if 'is_a' in t and args.relationships else None
+
+            # warning(termId, name, definition, synonyms, is_obsolete)
+
+            print("\t".join((termId, 
+                             name, 
+                             xstr(definition), 
+                             xstr(synonyms), 
+                             xstr(None), 
+                             is_obsolete)), file=termFile)
+
+            if args.relationships and is_a is not None:
+                printRelationships(name, is_a, relFile)
+            
+    warning("PROCESSED", count, "TERMS.")
+    if termFile:
+        termFile.close()
+    if relFile:
+        relFile.close()
+
+def processTerm(term):
+    ret = dict(term) #Input is a defaultdict, might express unexpected behaviour
+    for key, value in ret.iteritems():
+        if len(value) == 1:
+            ret[key] = value[0]
+    return ret
+
+def parseOboFile(filename):
+    """
+    Parses a file in OBO v1.2 format.
+    """
+    with open(filename, "r") as infile:
+        currentTerm = None
+        for line in infile:
+            line = line.strip()
+            if not line: continue #Skip empty
+            if line == "[Term]":
+                if currentTerm: yield processTerm(currentTerm)
+                currentTerm = defaultdict(list)
+            elif line == "[Typedef]":
+                #Skip [Typedef sections]
+                currentTerm = None
+            else: #Not [Term]
+                #Only process if we're inside a [Term] environment
+                if currentTerm is None: continue
+                key, sep, val = line.partition(":")
+                currentTerm[key].append(val.strip())
+
+        #Add last term
+        if currentTerm is not None:
+            yield processTerm(currentTerm)
+
+if __name__ == "__main__":
+    """Print out the number of objects in the given OBO file"""
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-o', '--obofile', 
+                        help='The input file in OBO v1.2 format.', 
+                        required=True)
+    parser.add_argument('-t', '--termFile', 
+                        help='file with new line separated target ids/no header')
+    parser.add_argument('--xdbrId', 
+                        help="GUS external database|release specification for ontology")
+    parser.add_argument('--relXdbrId', 
+                        help="GUS external database|release specification for GO (is_a relationship)")
+    parser.add_argument('-r', '--relationships',
+                        help='output term relationship file',
+                        action='store_true')
+    parser.add_argument('-p', '--prefix',
+                        help='output file prefix')
+    parser.add_argument('-c', '--countOnly', 
+                        action='store_true', 
+                        help='count number of terms in obo file and output')
+    parser.add_argument('-s', '--ignoreSynonyms',
+                        action='store_true',
+                        help='ignore synonyms')
+    args = parser.parse_args()
+
+    obo2text()
