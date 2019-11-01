@@ -65,10 +65,14 @@ def warning(*objs, **kwargs):
     print messages to stderr
     '''
     fh = sys.stderr
+    flush = False
     if kwargs:
         if 'file' in kwargs: fh = kwargs['file']
+        if 'flush' in kwargs: flush = kwargs['flush']
 
     print('[' + str(datetime.datetime.now()) + ']\t', *objs, file=fh)
+    if flush:
+        fh.flush()
 
 
 def qw(s, returnTuple=False):

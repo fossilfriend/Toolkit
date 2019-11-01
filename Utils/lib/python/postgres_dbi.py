@@ -7,7 +7,7 @@ import psycopg2
 import psycopg2.extras
 import os
 
-from Toolkit.Utils.FakeSecHead import FakeSecHead #,warning
+from CBILDataCommon.Util.FakeSecHead import FakeSecHead #,warning
 from ConfigParser import SafeConfigParser
 
 class Database(object):
@@ -41,6 +41,18 @@ class Database(object):
             return self.dbh.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
         return self.dbh.cursor()
+
+    def named_cursor(self, name, cursorFactory=None, withhold=True):
+        '''
+        create and return database cursor
+        if dictCursor is True, return DictCursor
+        '''
+        if cursorFactory == 'DictCursor':
+            return self.dbh.cursor(name=name,cursor_factory=psycopg2.extras.DictCursor, withhold=withhold)
+        if cursorFactory == 'RealDictCursor':
+            return self.dbh.cursor(name=name,cursor_factory=psycopg2.extras.RealDictCursor, withhold=withhold)
+
+        return self.dbh.cursor(name=name, withhold=withhold)
 
 
     def set_session(self, readonly=None, autocommit=None):
@@ -158,3 +170,6 @@ class Database(object):
         commit any changes
         '''
         self.dbh.commit()
+
+
+  

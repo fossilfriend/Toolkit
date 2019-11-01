@@ -76,11 +76,13 @@ def fetch_LD():
         print('\t'.join(header), file=fh)
         with database.cursor() as cursor:
             for variant in variants:
+                if args.verbose: warning(variant)
                 if args.maf:
                     cursor.execute(build_sql(), (variant, variant, args.pop, args.r2, args.maf))
                 else:
                     cursor.execute(build_sql(), (variant, variant, args.pop, args.r2))
-            
+                for record in cursor:
+                    print('\t'.join(record.insert(0, variant)), file=fh)
                     
 
 def parse_snp_list():
@@ -107,6 +109,7 @@ if __name__ == "__main__":
     parser.add_argument('--maf', help="LD maf filter", type=float)
     parser.add_argument('-o', '--output', help="full path to output file", required=True)
     parser.add_arugment('--pop', help="1000 Genomes superpopulation", choices=["EUR", "AMR", "AFR", "EAS", "SAS"], default="EUR")
+    parser.add_arugment('--verbose', action='store_true')
     parser.add_arugment('--gusConfigFile', help="GUS config file. If not provided, assumes default: $GUS_HOME/conf/gus.config")
 
     args = parser.parse_args()
