@@ -7,7 +7,7 @@ import psycopg2
 import psycopg2.extras
 import os
 
-from CBILDataCommon.Util.FakeSecHead import FakeSecHead #,warning
+from Toolkit.Utils.FakeSecHead import FakeSecHead #,warning
 from ConfigParser import SafeConfigParser
 
 class Database(object):
