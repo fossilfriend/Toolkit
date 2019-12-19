@@ -5,8 +5,25 @@ import sys
 import os
 import gzip
 import datetime
+from urllib import urlencode
 
 from subprocess import check_output, CalledProcessError
+
+
+def build_url(base_url , *res, **params):
+    ''' 
+    assemble a url 
+    from https://stackoverflow.com/questions/15799696/library-to-build-urls-in-python
+    e.g., make_url('http://example.com', 'user', 'ivan', aloholic='true', age=18)
+    http://example.com/user/ivan?age=18&aloholic=true
+    '''
+    url = base_url
+    for r in res:
+        url = '{}/{}'.format(url, r)
+    if params:
+        url = '{}?{}'.format(url, urlencode(params))
+    return url
+
 
 def execute_cmd(cmd, cwd=None, printCmdOnly=False, verbose=True):
     '''

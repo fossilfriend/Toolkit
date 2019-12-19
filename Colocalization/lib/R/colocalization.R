@@ -5,21 +5,8 @@ library(ggplot2)
 library(gridExtra)
 
 
-loadRegions <- function(filename, linkager) {
-    data  <- read.table(filename, header=TRUE, sep=",", stringsAsFactors = FALSE)
-    print("Fetching missing linkage regions")
-    for (i in 1:nrow(data)) {
-        if (is.na(data[i, "ld_block"])) {
-            variant  <- data[i, "variant"]
-            print(variant)
-            block <- fetchLDBlock(variant, linkager)
-            data[i, "start"]  <- block$start
-            data[i, "end"]  <- block$end
-            data[i, "ld_block"]  <- block$ld_block
-            data[i, "position"]  <- fetchVariantPosition(variant)
-        }
-    }
-    data
+loadRegions <- function(filename) {
+    read.table(filename, header=TRUE, sep=",", stringsAsFactors = FALSE)
 }
 
 fetchVariantPosition  <- function(refsnp, user, pwd, dbname, host, port) {
@@ -31,33 +18,6 @@ WHERE variant_id IN (SELECT find_variant_by_refsnp($1::text)) LIMIT 1"
     r  <- fetch(qh, n = -1)
     dbDisconnect(sth)
     r$position
-}
-
-fetchLDBlock  <- function(refsnp, linkager, user, pwd, dbname, host, port) {
-    sth <- dbConnect(PostgreSQL(), user=user, password=pwd, dbname=dbname, host=host, port=port)
-    SQL  <- "
-WITH v AS (SELECT find_variant_by_refsnp($1::text) AS variant_id),
-ld AS (SELECT * FROM Results.VariantLD, v
-WHERE ARRAY[v.variant_id] <@ variants)
-SELECT min(position) AS start, max(position) AS end, replace(chromosome, 'chr', '') || ':' || min(position)::text || '-' || max(position)::text AS ld_block
-FROM NIAGADS.Variant
-WHERE variant_id IN
-(SELECT DISTINCT unnest(variants) FROM ld WHERE ld.r_squared >= $2::numeric)
-GROUP BY chromosome
-
-UNION -- case if no LD
-
-SELECT min(position) AS start, max(position) AS end, replace(chromosome, 'chr', '') || ':' || min(position)::text || '-' || max(position)::text AS ld_block
-FROM NIAGADS.Variant
-WHERE variant_id IN (SELECT find_variant_by_refsnp($1::text))
-AND NOT EXISTS (SELECT * FROM ld WHERE r_squared >= $2::numeric)
-GROUP BY chromosome
-"
-
-    qh <- dbSendQuery(sth, SQL, c(refsnp, linkager))
-    block  <- fetch(qh, n = -1)
-    dbDisconnect(sth)
-    block
 }
 
 
@@ -114,8 +74,6 @@ WINDOW w as (PARTITION BY metaseq_id)"
     data$pvalue <- 10 ^ (-1 * data$neg_log10_pvalue)
 
     data
-
-
 }
 
 
@@ -164,7 +122,6 @@ loadStroke <- function(datasetIndex) {
     print("MAF")
     data$maf <- sapply(data$frequency, findMAF)
     data
-
 }
 
 generateAnnotation <- function(data, regions, flanking){

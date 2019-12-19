@@ -1,0 +1,120 @@
+#!/usr/bin/env python
+
+'''
+fetches LD blocks by querying directly against the GenomcisDB using the REST API
+
+Expects a comma separated list of variants or a table delimited file containing at least the following columns:
+  variant ld_block chr start end
+where chr start end define the ld_block
+Variants should be identified by refSnpId (rs#) or metaseqId (chr:pos:ref:alt)
+
+If a file is provided, script will fetch ld block only for variants missing that annotation
+
+'''
+
+from __future__ import print_function
+from __future__ import with_statement
+
+import argparse
+import sys
+import requests
+from Toolkit.Utils.utils import warning, xstr, qw, verify_path, build_url
+
+def fetch_missing_ld_blocks():
+    '''
+    read in csv file with at least the following columns
+    variant ld_block chr start end
+    where chr start end define the ld_block
+    and make requests for missing ld_blocks
+    '''
+
+    payload = {'population': args.pop,
+               'r2': args.r2}
+    if args.maf:
+        payload['maf'] = args.maf
+
+    requestUrl = build_url(args.requestUrl, 'service',
+                           'variant', 'ldwindow')
+
+    with open(args.snps, 'r') as ifh, open(args.output, 'w') as ofh:
+        header = next(ifh).rstrip().decode("utf-8-sig").encode('utf-8') # TODO: may not always be necessary; add check
+        print(header, file=ofh)
+        fields = {k: v for v, k in enumerate(header.split(','))}
+        warning(header)
+        warning(header.split(','))
+        warning(fields)
+        for line in ifh:
+            values = line.rstrip().split(',')
+            ldBlock = values[fields['ld_block']]
+            if xstr(ldBlock) == 'NA':
+                variant = values[fields['variant']]
+                
+                if args.verbose:
+                    warning(variant)
+                if 'rs' in variant:
+                    payload['rsid'] = variant
+                else:
+                    payload['variant'] = variant
+                    
+                response = requests.get(requestUrl, params=payload)
+                rjson = response.json()
+                values[fields['ld_block']] = rjson['ld_block']
+                values[fields['chr']] = rjson['chr']
+                values[fields['start']] = rjson['start']
+                values[fields['end']] = rjson['end']
+                if 'block_size' in fields:
+                    values[fields['block_size']] = rjson['block_size']
+                    
+            print(','.join([xstr(x) for x in values]), file=ofh)
+
+
+def process_variant_list():
+    ''' process tab-delim variant list'''
+    variants = args.snps.split(',')
+    header = qw('variant ld_block chr start end block_size')
+
+    payload = {'population': args.pop,
+               'r2': args.r2}
+
+    requestUrl = build_url(args.requestUrl, 'service','variant', 'ldwindow')
+    
+    if args.maf:
+        payload['maf'] = args.maf
+        
+    with open(args.output, 'w') as fh:
+        print(','.join(header), file=fh)
+        for variant in variants:
+            if args.verbose:
+                warning(variant)
+            if 'rs' in variant:
+                payload['rsid'] = variant
+            else:
+                payload['variant'] = variant
+                
+            response = requests.get(requestUrl, params=payload)
+            rjson = response.json()
+            print(','.join((variant, rjson['ld_block'], rjson['chr'], xstr(rjson['start']),
+                            xstr(rjson['end']), xstr(rjson['block_size']))), file=fh)
+
+            
+                
+if __name__ == "__main__":
+    """fetch LD Window"""
+    parser = argparse.ArgumentParser("Query against NIAGADS GenomicsDB to find LD windows for a list of variants")
+    parser.add_argument('-s', '--snps', help="full path to file containing newline separated list of SNPs specified using either rsID <or metaseq identifier", required=True)
+    parser.add_argument('--r2', help="LD r2 filter", default=0.5, type=float)
+    parser.add_argument('--maf', help="LD maf filter", type=float)
+    parser.add_argument('-o', '--output', help="full path to output file", required=True)
+    parser.add_argument('--pop', help="1000 Genomes superpopulation", choices=["EUR", "AMR", "AFR", "EAS", "SAS"], default="EUR")
+    parser.add_argument('-u', '--requestUrl', help="GenomicsDB base url", default="https://www.niagads.org")
+    parser.add_argument('--verbose', action='store_true')
+
+    args = parser.parse_args()
+
+    warning(args)
+    if ',' in args.snps:
+        warning("Found Variant List")
+        process_variant_list()
+    else:
+        fetch_missing_ld_blocks()
+
