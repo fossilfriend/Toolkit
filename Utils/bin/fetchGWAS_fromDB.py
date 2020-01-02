@@ -59,13 +59,11 @@ def fetch_gwas_data():
     count = 0
     fileName = path.join(args.outputFilePath, args.track + ".txt")
     with open(fileName, 'w') as fh, database.cursor() as cursor:
-        cursor.itersize = 50000
         cursor.execute(SQL, (args.track,))
         for row in cursor:
             count = count + 1
             print('\t'.join((xstr(x) for x in row)), file=fh)
-        warning("Wrote", xstr(count), "rows.")
-        
+    warning("DONE - Wrote", count, "rows.")
                 
 if __name__ == "__main__":
     """fetch GWAS dataset"""
