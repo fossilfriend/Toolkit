@@ -117,7 +117,6 @@ def map_tad_elements(tads, features):
     '''
 
     result = pd.DataFrame()
-
     for tad in tads.itertuples():
 
         tad_id, chrom, start, end = list(tad)
@@ -128,12 +127,12 @@ def map_tad_elements(tads, features):
                                        (features['start'] <= end) &
                                        (features['end'] >= start)] # 1-based coordinate so should be inclusive
   
-
-        overlappingFeatures['TAD'] = tad_id
-        overlappingFeatures['TAD_start'] = start
-        overlappingFeatures['TAD_end'] = end
+        if not overlappingFeatures.empty:
+            overlappingFeatures['TAD'] = tad_id
+            overlappingFeatures['TAD_start'] = start
+            overlappingFeatures['TAD_end'] = end
      
-        result = result.append(overlappingFeatures, ignore_index=True)
+            result = result.append(overlappingFeatures, ignore_index=True)
 
     return result
 
@@ -161,7 +160,7 @@ def map_genes(data, index_file):
        
     result = flag_boundary_features(result)
       
-    result.to_csv(index_file, sep='\t', compression='bz2', index=False)
+    result.to_csv(index_file, sep='\t', compression=args.compress, index=False)
 
    
 def map_variants(inputFileName, index_file):
@@ -169,7 +168,7 @@ def map_variants(inputFileName, index_file):
     map variants to TAD regions
     '''
     warning("MAPPING Variants to TADs")
-    data = pd.read_csv(inputFileName, sep='\t')
+    data = pd.read_csv(inputFileName, sep=args.delimiter)
     if 'position' not in data and 'start' not in data and 'end' not in data:
         die("Error parsing Variant data, expect either 'position', 'start',  or ['start', 'end'] columns")
     if 'position' in data:
@@ -177,36 +176,45 @@ def map_variants(inputFileName, index_file):
         data['end'] = data['position']
     if 'start' in data and 'end' not in data:
         data['end'] = data['start']
+    if 'chr' in data:
+        data['chromosome'] = data['chr']
         
+    data['chromosome'] = data['chromosome'].apply(str) # in case all were numeric (i.e., no X,Y)
+    
     result = map_tad_elements(tad_df, data)
     warning("MAPPING Variants to TADs - DONE")
     
-    unmapped = data.query("id not in result.id")
-    unmapped['TAD_id'] = np.nan
+    unmapped = data.query("id not in @result.id")
+    unmapped['TAD'] = np.nan
     unmapped['TAD_start'] = np.nan
     unmapped['TAD_start'] = np.nan
 
-    result.append(unmapped, ignore_index=True)
+    result.append(unmapped, ignore_index=True, sort=False)
     
-    result.to_csv(index_file, sep='\t', compression='bz2', index=False)
+    result.to_csv(index_file, sep='\t', compression=args.compress, index=False)
 
 
 def map_spans(inputFileName, index_file):
     ''' map spans to TAD regions '''
-    warning("MAPPING Spans to TADs")
-    data = pd.read_csv(inputFileName, sep='\t') 
+    warning("MAPPING TADs to Spans")
+    data = pd.read_csv(inputFileName, sep=args.delimiter)
+
+    if 'chr' in data:
+        data['chromosome'] = data['chr']
+    data['chromosome'] = data['chromosome'].apply(str) # in case all were numeric
+    data['id'] = data['ld_block']
+    
     result = map_tad_elements(tad_df, data)
-    warning("MAPPING Spans to TADs - DONE")
-    
-    unmapped = data.query("id not in result.id")
-    unmapped['TAD_id'] = np.nan
+    warning("MAPPING TADs to Spans - DONE")
+
+    unmapped = data.query("id not in @result.id")
+    unmapped['TAD'] = np.nan
     unmapped['TAD_start'] = np.nan
     unmapped['TAD_start'] = np.nan
 
-    result.append(unmapped, ignore_index=True)
+    result.append(unmapped, ignore_index=True, sort=False)
     
-    result.to_csv(index_file, sep='\t', compression='bz2', index=False)
-
+    result.to_csv(index_file, sep='\t', compression=args.compress, index=False)
 
 
     
@@ -223,28 +231,33 @@ if __name__ == "__main__":
     parser.add_argument('--prefix', help='prefix to add to output files (ignored for genes)')
     parser.add_argument('-o', '--outputFilePath', help='output file path', required=True)
     parser.add_argument('--genomeBuild', default='hg19')
+    parser.add_argument('-d', '--delimiter', default='\t')
+    parser.add_argument('--compress', help='compress output?', choices=['gzip', 'bz2'])
     args = parser.parse_args()
 
     # Read in TAD boundary file
     tad_df = load_tads(args.tadFile)
+
+    extension = '' if not args.compress else \
+        '.gz' if args.compress == 'gz' else '.bz2'
     
     if args.featureType == 'gene':
         # geneRef = generate_gene_ref(args.gencodeFile) if args.generateGeneIndex or args.featureType == 'ld' else None
         geneRef = parse_gzipped_gtf(args.inputFile) 
-        indexFileName = path.join(args.outputFilePath, 'gene_index_' + args.genomeBuild + '_' + args.cellType + '.tsv.bz2')
+        indexFileName = path.join(args.outputFilePath, 'gene_index_' + args.genomeBuild + '_' + args.cellType + '.tsv') + extension
         map_genes(geneRef, indexFileName)
     
     if args.featureType == 'span':
-        indexFileName = args.prefix + '_span_index_' + args.genomeBuild + '_' + args.cellType + '.tsv.bz2' \
+        indexFileName = args.prefix + '_span_index_' + args.genomeBuild + '_' + args.cellType + '.tsv' + extension \
             if args.prefix else \
-              'span_index_' + args.genomeBuild + '_' + args.cellType + '.tsv.bz2'
-        
+              'span_index_' + args.genomeBuild + '_' + args.cellType + '.tsv' + extension
+     
         map_spans(args.inputFile, path.join(args.outputFilePath, indexFileName))
         
     if args.featureType == 'variant':
-        indexFileName = args.prefix + '_variant_index_' + args.genomeBuild + '_' + args.cellType + '.tsv.bz2' \
+        indexFileName = args.prefix + '_variant_index_' + args.genomeBuild + '_' + args.cellType + '.tsv' + extension \
             if args.prefix else \
-              'variant_index_' + args.genomeBuild + '_' + args.cellType + '.tsv.bz2'
+              'variant_index_' + args.genomeBuild + '_' + args.cellType + '.tsv' + extension
          
         map_variants(args.inputFile, path.join(args.outputFilePath, indexFileName))
 

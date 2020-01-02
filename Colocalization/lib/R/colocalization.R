@@ -67,9 +67,6 @@ WINDOW w as (PARTITION BY metaseq_id)"
 
     print(Sys.time() - start)
 
-    print("MAF") # first_value doesn't work out when we do this in the SQL
-    data$maf <- sapply(data$frequency, findMAF)
-
     print("Unlogging p-value")
     data$pvalue <- 10 ^ (-1 * data$neg_log10_pvalue)
 
@@ -119,8 +116,7 @@ loadStroke <- function(datasetIndex) {
     data$testallele  <- toupper(data$testallele)
     data$allele2  <- toupper(data$allele2)
     data$neg_log10_pvalue  <- -log10(data$pvalue)
-    print("MAF")
-    data$maf <- sapply(data$frequency, findMAF)
+
     data
 }
 
@@ -217,19 +213,6 @@ doColoc <- function(regions, data1, details1, data2, details2, flanking=0, logFi
         sink()
     }
     result
-}
-
-
-findMAF <- function(frequency) {
-    if (is.na(frequency)) {
-        return(frequency)
-    }
-
-    f  <- frequency
-    if (frequency > 0.5) {
-        f = 1.0 - frequency
-    }
-    f
 }
 
 
