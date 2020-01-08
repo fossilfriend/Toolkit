@@ -60,12 +60,13 @@ def fetch_gwas_data():
     count = 0
     fileName = path.join(args.outputFilePath, args.track + ".txt")
     with open(fileName, 'w') as fh, database.cursor() as cursor:
-        print('\t'.join(qw('chr pos testallele variant marker neg_log10_pvalue pvalue frequency beta variance', returnTuple=True)), file=fh)
+        print('\t'.join(qw('chr position testallele variant marker neg_log10_pvalue pvalue frequency beta variance', returnTuple=True)), file=fh)
         cursor.execute(SQL, (args.track,))
         for row in cursor:
             count = count + 1
             print('\t'.join((xstr(x) for x in row)), file=fh)
     warning("DONE - Wrote", count, "rows.")
+    
                 
 if __name__ == "__main__":
     """fetch GWAS dataset"""

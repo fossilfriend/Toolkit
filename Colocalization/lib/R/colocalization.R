@@ -9,97 +9,9 @@ loadRegions <- function(filename) {
     read.table(filename, header=TRUE, sep=",", stringsAsFactors = FALSE)
 }
 
-fetchVariantPosition  <- function(refsnp, user, pwd, dbname, host, port) {
-    sth <- dbConnect(PostgreSQL(), user=user, password=pwd, dbname=dbname, host=host, port=port)
-    SQL  <- "SELECT replace(chromosome, 'chr', '') || ':' || position::text AS position FROM NIAGADS.Variant
-WHERE variant_id IN (SELECT find_variant_by_refsnp($1::text)) LIMIT 1"
-
-    qh <- dbSendQuery(sth, SQL, c(refsnp))
-    r  <- fetch(qh, n = -1)
-    dbDisconnect(sth)
-    r$position
-}
 
 
-fetchGWASFromDB <- function(accession,user,pwd,dbname,host,port) {
-    sth <- dbConnect(PostgreSQL(), user=user, password=pwd, dbname=dbname, host=host, port=port)
 
-    ##on.exit(dbDisconnect(sth))
-
-    start <- Sys.time()
-    print(paste("Fetching", accession))
-
-    SQL2  <- "WITH datasets AS (SELECT $1::text AS track)
-SELECT DISTINCT
-CASE WHEN split_part(metaseq_id, ':', 1) = 'X' THEN 23
-WHEN split_part(metaseq_id, ':', 1) = 'Y' THEN 24
-WHEN split_part(metaseq_id, ':', 1) = 'M' THEN 25
-ELSE split_part(metaseq_id, ':', 1)::integer END AS chr,
-
-split_part(metaseq_id, ':', 2)::integer AS pos,
-
-allele AS testAllele,
-
-metaseq_id AS variant,
-CASE WHEN r.source_id LIKE 'rs%' THEN r.source_id  ELSE NULL END AS marker,
-
-max(r.neg_log10_pvalue) OVER w AS neg_log10_pvalue,
-first_value(r.pvalue_display::text) OVER w AS display_pvalue,
-first_value(r.frequency) OVER w AS frequency,
-
-first_value(r.restricted_stats->>'beta') OVER w AS beta,
-first_value(power((r.restricted_stats->>'freq_se')::numeric, 2)) OVER w AS variance
-
-FROM
-Results.VariantGWAS r,
-Study.ProtocolAppNode pan,
-Datasets
-WHERE pan.source_id = datasets.track
-AND r.protocol_app_node_id = pan.protocol_app_node_id
-
-WINDOW w as (PARTITION BY metaseq_id)"
-
-    qh <- dbSendQuery(sth, SQL2, c(accession))
-    data <- fetch(qh, n = -1) # extract all rows
-
-
-    dbDisconnect(sth)
-
-    print(Sys.time() - start)
-
-    print("Unlogging p-value")
-    data$pvalue <- 10 ^ (-1 * data$neg_log10_pvalue)
-
-    data
-}
-
-
-assembleGeneRegions <- function(genes, phenotype) {
-    print("Fetching gene regions")
-    regions  <- NULL
-    for (g in genes) {
-        print(g)
-        loc  <- fetchGeneLocation(g)
-        result  <- list(g, paste(g, phenotype, sep="_"), loc$chr, loc$start, loc$end)
-        regions  <- rbind.data.frame(regions, result, stringsAsFactors=FALSE, make.row.names=FALSE)
-    }
-
-    colnames(regions) <- c("gene", "label", "chr", "start", "end")
-
-    regions
-}
-
-
-fetchGeneLocation  <- function(gene, user, pwd,dbname, host, port) {
-    sth <- dbConnect(PostgreSQL(), user=user, password=pwd, dbname=dbname, host=host, port=port)
-    SQL  <- "SELECT replace(chromosome, 'chr', '')::integer AS chr, location_start AS start, location_end AS end
-FROM CBIL.GeneAttributes WHERE gene_symbol = trim(replace($1::text,'*','')) ORDER BY transcript_count DESC LIMIT 1"
-
-    qh <- dbSendQuery(sth, SQL, c(gene))
-    geneLoc  <- fetch(qh, n = -1)
-    dbDisconnect(sth)
-    geneLoc
-}
 
 loadStroke <- function(datasetIndex) {
     fileName <- paste(STROKE$path, STROKE$file[datasetIndex], sep="/")
