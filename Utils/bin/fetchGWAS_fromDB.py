@@ -16,7 +16,7 @@ import argparse
 import sys
 from os import path
 from Toolkit.Utils.postgres_dbi import Database
-from Toolkit.Utils.utils import warning, xstr
+from Toolkit.Utils.utils import warning, xstr, qw
 
 
 SQL="""
@@ -50,6 +50,7 @@ WHERE pan.source_id = datasets.track
 AND r.protocol_app_node_id = pan.protocol_app_node_id
 
 WINDOW w as (PARTITION BY metaseq_id)
+ORDER BY CHR, POS
 
 
 """
@@ -59,6 +60,7 @@ def fetch_gwas_data():
     count = 0
     fileName = path.join(args.outputFilePath, args.track + ".txt")
     with open(fileName, 'w') as fh, database.cursor() as cursor:
+        print('\t'.join(qw('chr pos testallele variant marker neg_log10_pvalue pvalue frequency beta variance', returnTuple=True)), file=fh)
         cursor.execute(SQL, (args.track,))
         for row in cursor:
             count = count + 1
