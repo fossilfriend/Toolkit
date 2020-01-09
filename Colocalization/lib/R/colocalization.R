@@ -1,64 +1,46 @@
 library(dplyr)
-library(RPostgreSQL)
 library(coloc)
 library(ggplot2)
 library(gridExtra)
 
+subEnvVars  <- function(text) {
+    DATA_DIR <- Sys.getenv("DATA_DIR")
+    WORKING_DIR  <- Sys.getenv("WORKING_DIR")
 
-loadRegions <- function(filename) {
-    read.table(filename, header=TRUE, sep=",", stringsAsFactors = FALSE)
+    newText  <- sub("\\$DATA_DIR", DATA_DIR, text)
+    sub("\\$WORKING_DIR", WORKING_DIR, newText)
 }
 
 
-
-
-
-loadStroke <- function(datasetIndex) {
-    fileName <- paste(STROKE$path, STROKE$file[datasetIndex], sep="/")
-
-    print(paste("Loading megastroke data:", fileName))
-    start <- Sys.time()
-    data <- read.table(fileName,  header=TRUE, stringsAsFactors= FALSE) # nrows=50000,
-    print(Sys.time() - start)
-
-    print(dim(data))
-
-    colnames(data) <- c("marker", "testallele", "allele2", "frequency", "beta", "variance", "pvalue")
-    data$variance  <- data$variance^2
-    data$testallele  <- toupper(data$testallele)
-    data$allele2  <- toupper(data$allele2)
-    data$neg_log10_pvalue  <- -log10(data$pvalue)
-
-    data
+loadData <- function(config) {
+    config$file <- subEnvVars(subEnvVars(config$file))
+    read.table(config$file, sep="\t", header=T, stringsAsFactors=F)
 }
 
-generateAnnotation <- function(data, regions, flanking){
-    print("generating annotation")
-    annotation <- rep(1, length(data$pvalue))
-    for (row in 1:nrow(regions)) {
-        ## print(as.character(regions$variant)[row])
-        annotation[with(data, chr==regions$chr[row] & pos >= (regions$start[row] - flanking) & pos < (regions$end[row] + flanking))] <- row
-    }
-    print(paste("Done. Generated annotation for", nrow(regions), "regions."))
-    annotation <- factor(annotation, levels=1:nrow(regions), labels=regions[["label"]])
-    annotation
+buildDetails <- function(config) {
+    list(name=config$name, ncases=config$ncases, ncontrols=config$ncontrols, type="cc", nsamples=config$ncases + config$ncontrols)
 }
 
 
-doColoc <- function(regions, data1, details1, data2, details2, flanking=0, logFile) {
+customColoc  <- function(regions, config) {
     ## subset
     result <- NULL
 
+    config1 <- config$conditions[1]
+    config2  <- config$conditions[2]
+    data1 <- loadData(config1)
+    data2 <- loadData(config2)
+    details1  <- buildDetails(config1)
+    details2  <- buildDetails(config2)
 
-    if (!is.null(logFile)) {
-        sink(file = logFile, append = FALSE, type = c("output", "message"), split = FALSE)
+    if (!is.null(config$log)) {
+        sink(file = config$log, append = FALSE, type = c("output", "message"), split = FALSE)
     }
 
     MAF <- TRUE
     if (is.na(data1[1,"frequency"]) || is.na(data2[1,"frequency"])) {
         MAF <- FALSE
     }
-
 
     BETA  <- TRUE
     if (is.na(data1[1,"beta"]) || is.na(data2[1,"beta"])) {
@@ -121,7 +103,7 @@ doColoc <- function(regions, data1, details1, data2, details2, flanking=0, logFi
     # print(str(result))
     print("Done.")
 
-    if (!is.null(logFile)) {
+    if (!is.null(config$log)) {
         sink()
     }
     result
@@ -157,7 +139,7 @@ adjustDirectionality  <- function(data1, data2, skipAdjustment) {
 
 writeColocResult  <- function(colocR, trait1, trait2, fileName) {
 
-    cnames  <- c("tag_region_label", "chr", "start", "end",
+    cnames  <- c("region_label", "chr", "start", "end",
                  paste("nvariants", trait1, sep="_"), paste("nvariants", trait2, sep="_"), paste("ppH0", "no_causal", sep="_"),
                  paste("ppH1", trait1, "only", sep="_"), paste("ppH2", trait2, "only", sep="_"),
                  paste("ppH3", "more_than_one_shared_causal", sep="_"), paste("ppH4", "one_shared_causal", sep="_"))
