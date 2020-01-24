@@ -11,10 +11,26 @@ subEnvVars  <- function(text) {
     sub("\\$WORKING_DIR", WORKING_DIR, newText)
 }
 
+verifyDirectory  <- function(dirName) {
+    dir.create(dirName)
+}
+
 
 loadData <- function(config) {
-    config$file <- subEnvVars(subEnvVars(config$file))
-    read.table(config$file, sep="\t", header=T, stringsAsFactors=F)
+    config$file <- subEnvVars(config$file)
+    print(paste("Loading", config$file, sep=" "))
+    sep = "\t"
+    if ("sep" %in% names(config)) {
+        sep = config$sep
+    }
+    data  <- read.table(config$file, sep=sep, header=T, stringsAsFactors=F)
+    if ("transform_pvalue" %in% names(config)) { # when pvalue is small, may come out of zero b/c of limits of python/perl/postgres
+        if (config$transform_pvalue) {
+            data$pvalue = 10 ^ (-1 * data$neg_log10_pvalue)
+        }
+    }
+    data
+
 }
 
 buildDetails <- function(config) {
@@ -22,29 +38,16 @@ buildDetails <- function(config) {
 }
 
 
-customColoc  <- function(regions, config) {
+
+customColoc  <- function(regions, trait1, trait2, config) {
     ## subset
     result <- NULL
 
-    config1 <- config$conditions[1]
-    config2  <- config$conditions[2]
-    data1 <- loadData(config1)
-    data2 <- loadData(config2)
-    details1  <- buildDetails(config1)
-    details2  <- buildDetails(config2)
+    details1  <- buildDetails(trait1$config)
+    details2  <- buildDetails(trait2$config)
 
     if (!is.null(config$log)) {
         sink(file = config$log, append = FALSE, type = c("output", "message"), split = FALSE)
-    }
-
-    MAF <- TRUE
-    if (is.na(data1[1,"frequency"]) || is.na(data2[1,"frequency"])) {
-        MAF <- FALSE
-    }
-
-    BETA  <- TRUE
-    if (is.na(data1[1,"beta"]) || is.na(data2[1,"beta"])) {
-        BETA <- FALSE
     }
 
     for (row in 1:nrow(regions)) {
@@ -52,20 +55,21 @@ customColoc  <- function(regions, config) {
         label  <- regions[["label"]][row]
 
         print(paste(row, label, sep=": "))
-        print(paste(regions$chr[row], regions$start[row] - flanking, regions$end[row] + flanking))
+        print(paste("Span Length:", regions$end[row] -  regions$start[row], sep=" "))
 
-        if (regions$start[row] - flanking  == regions$end[row] + flanking) {
+        if (regions$start[row]  == regions$end[row]) {
             print("1bp region; skipping")
             result[[label]][["result"]] <- NULL
-            result[[label]][["span"]]  <- list(chr=regions$chr[row], start=regions$start[row] - flanking, end=regions$end[row] + flanking)
+            result[[label]][["span"]]  <- list(chr=regions$chr[row], start=regions$start[row], end=regions$end[row])
             result[[label]][["nvariants"]] <- list(trait1=1)
+            result[[label]][["phenotype"]] <- regions$phenotype[row]
             result[[label]][["summary"]]  <- NULL
             next
         }
 
-        subset1 <- data1[with(data1, chr==regions$chr[row] & pos >= (regions$start[row] - flanking) & pos < (regions$end[row] + flanking)), ,drop=FALSE]
-        overlap <- intersect(subset1$marker, data2$marker)
-        subset2 <- data2[data2$marker %in% overlap, ,drop=FALSE]
+        subset1 <- trait1$data[with(trait1$data, chr==regions$chr[row] & position >= (regions$start[row]) & position < (regions$end[row])), ,drop=FALSE]
+        overlap <- intersect(subset1$marker, trait2$data$marker)
+        subset2 <- trait2$data[trait2$data$marker %in% overlap, ,drop=FALSE]
         row.names(subset2)  <- subset2$marker
 
         result[[label]][["nvariants"]] <- list(trait1=nrow(subset1),trait2=nrow(subset2),overlap=length(overlap))
@@ -74,31 +78,27 @@ customColoc  <- function(regions, config) {
         subset1 <- subset1[subset1$marker %in% overlap, ,drop=FALSE]
         row.names(subset1)  <- subset1$marker
 
-        adj  <- adjustDirectionality(subset1, subset2, !(MAF && BETA))
+        adj  <- adjustDirectionality(subset1, subset2)
 
+        input1 <- list(snp=adj$subset1$marker, pvalues=adj$subset1$pvalue, type=details1$type, N=details1$nsamples, s=details1$ncases/details1$nsamples)
+        input2 <- list(snp=adj$subset2$marker,  pvalues=adj$subset2$pvalue, type=details2$type, N=details2$nsamples, s=details2$ncases/details2$nsamples)
 
-        trait1 <- list(snp=adj$subset1$marker, pvalues=adj$subset1$pvalue, type=details1$type, N=details1$nsamples, s=details1$ncases/details1$nsamples)
-        trait2 <- list(snp=adj$subset2$marker,  pvalues=adj$subset2$pvalue, type=details2$type, N=details2$nsamples, s=details2$ncases/details2$nsamples)
+        input1[["MAF"]]  <- adj$subset1$frequency
+        input2[["MAF"]]  <- adj$subset2$frequency
 
-        if (MAF) {
-            trait1[["MAF"]]  <- adj$subset1$maf
-            trait2[["MAF"]]  <- adj$subset2$maf
-        }
+        input1[["beta"]]  <-  adj$subset1$beta
+        input1[["betavar"]]  <- adj$subset1$variance
+        input2[["beta"]] <-  adj$subset2$beta
+        input2[["betavar"]] <-  adj$subset2$variance
 
-        if (BETA) {
-            trait1[["beta"]]  <-  adj$subset1$beta
-            trait1[["betavar"]]  <- adj$subset1$variance
-            trait2[["beta"]] <-  adj$subset2$beta
-            trait2[["betavar"]] <-  adj$subset2$variance
-        }
-
-        r <- coloc.abf(trait1, trait2)
+        r <- coloc.abf(input1, input2)
 
         print(summary(r))
 
         result[[label]][["result"]] <- r
-        result[[label]][["span"]]  <- list(chr=regions$chr[row], start=regions$start[row] - flanking, end=regions$end[row] + flanking)
+        result[[label]][["span"]]  <- list(chr=regions$chr[row], start=regions$start[row], end=regions$end[row])
         result[[label]][["summary"]] <- summary(r)
+        result[[label]][["phenotype"]] <- regions$phenotype[row]
     }
     # print(str(result))
     print("Done.")
@@ -111,8 +111,7 @@ customColoc  <- function(regions, config) {
 
 
 
-adjustDirectionality  <- function(data1, data2, skipAdjustment) {
-    if (!skipAdjustment) {
+adjustDirectionality  <- function(data1, data2) {
         for (marker in row.names(data1)) {
             testAllele.data1  <- data1[marker, "testallele"]
             testAllele.data2  <- data2[marker, "testallele"]
@@ -130,16 +129,16 @@ adjustDirectionality  <- function(data1, data2, skipAdjustment) {
                 data2[marker, "testallele"]  <- testAllele.data1
                 data2[marker, "beta"]  <- 1 * beta.data2
                 data2[marker, "frequency"]  <- 1.0 - freq.data2
-                data2[marker, "maf"]  <- freq.data2
             }
         }
-    }
+
     list(subset1=data1, subset2=data2)
 }
 
 writeColocResult  <- function(colocR, trait1, trait2, fileName) {
+    print(fileName)
 
-    cnames  <- c("region_label", "chr", "start", "end",
+    cnames  <- c("region_label", "phenotype", "chr", "start", "end", "length",
                  paste("nvariants", trait1, sep="_"), paste("nvariants", trait2, sep="_"), paste("ppH0", "no_causal", sep="_"),
                  paste("ppH1", trait1, "only", sep="_"), paste("ppH2", trait2, "only", sep="_"),
                  paste("ppH3", "more_than_one_shared_causal", sep="_"), paste("ppH4", "one_shared_causal", sep="_"))
@@ -150,8 +149,9 @@ writeColocResult  <- function(colocR, trait1, trait2, fileName) {
             print(paste("WARNING: no result for", label, "as region span was 1bp."))
             next
         }
-        row  <-  list(label, colocR[[label]]$span$chr, colocR[[label]]$span$start, colocR[[label]]$span$end,
-                  colocR[[label]]$nvariants$trait1, colocR[[label]]$nvariants$trait2,
+        row  <-  list(label, colocR[[label]]$phenotype, colocR[[label]]$span$chr, colocR[[label]]$span$start, colocR[[label]]$span$end,
+                      colocR[[label]]$span$end - colocR[[label]]$span$start,
+                      colocR[[label]]$nvariants$trait1, colocR[[label]]$nvariants$trait2,
                   colocR[[label]]$result$summary[["PP.H0.abf"]], colocR[[label]]$result$summary[["PP.H1.abf"]],
                   colocR[[label]]$result$summary[["PP.H2.abf"]], colocR[[label]]$result$summary[["PP.H3.abf"]],
                   colocR[[label]]$result$summary[["PP.H4.abf"]])
@@ -178,30 +178,35 @@ extractPP <- function(colocR, hindex) {
 
 
 mPlot <- function(data, annotation) {
-    manhattan.plot(data$chr, data$pos, data$pvalue, annotate=annotation)
+    manhattan.plot(data$chr, data$position, data$pvalue, annotate=annotation)
 }
 
 
-outputResult  <- function(regions, resul, flanking, data1, data2, trait1, trait2, filePrefix) {
+saveResult  <- function(regions, result, trait1, trait2, config) {
     print("Writing summary")
-    summary  <- writeColocResult(result, trait1, trait2, paste(filePrefix, "coloc-summary.txt", sep="-"))
-
-    print("Outputting graphics")
-    for (row in 1:nrow(regions)) {
-        plotRegion  <- plotRegion  <- list(chr=regions[row, "chr"], start=regions[row,"start"] - flanking, end=regions[row,"end"] + flanking, label=regions[row, "label"], pp=result[[row]]$result$summary[["PP.H4.abf"]])
-        print(plotRegion$label)
-        plotRegionManhattan(plotRegion, data1, data2, trait1, trait2, filePrefix, paste(filePrefix, plotRegion$label, "manhattan.pdf", sep="-"))
-        plotRegionPriors(plotRegion$label, result, data1, filePrefix, paste(filePrefix, plotRegion$label, "shared-causal-variant-priors.pdf", sep="-"))
-    }
+    summary  <- writeColocResult(result, trait1$config$name, trait2$config$name, paste(config$output_path, paste(config$comparison, "result_summary.txt", sep="_"), sep="/"))
 
     print("Saving result workspace")
-    save(result, summary, file=paste(filePrefix, "result.RData.gz", sep="-"), compress=TRUE)
+    fileName  <- paste(config$comparison, "result.RData.gz", sep="_")
+    save(result, summary, file=paste(config$output_path, fileName, sep="/"), compress=TRUE)
+    summary
+}
 
-
+generateGraphics  <- function(regions, result, trait1, trait2, config) {
+    print("Outputting graphics")
+    for (row in 1:nrow(regions)) {
+        plotRegion  <- plotRegion  <- list(chr=regions[row, "chr"], start=regions[row,"start"], end=regions[row,"end"], label=regions[row, "label"], pp=result[[row]]$result$summary[["PP.H4.abf"]])
+        print(plotRegion$label)
+        ##region, trait1, trait2, type, filename) {
+        fileName  <- paste(config$comparison, plotRegion$label, "manhattan.pdf", sep="_")
+        plotRegionManhattan(plotRegion, trait1, trait2, config$comparison, paste(config$output_path, fileName, sep="/"))
+        fileName  <- paste(config$comparison, plotRegion$label, "shared_cvps.pdf", sep="_")
+        plotRegionPriors(plotRegion$label, result, data1, filePrefix, paste(config$output_path, fileName, sep="/"))
+    }
 }
 
 
-plotRegionPriors  <- function(region, result, data, type, filename) {
+plotRegionPriors  <- function(region, result, data, comparison, filename) {
     r  <- result[[region]]$result$results
     subset  <- data[data$marker %in% r$snp, ]
 
@@ -213,7 +218,7 @@ plotRegionPriors  <- function(region, result, data, type, filename) {
     row.names(r) <- r$snp
 
      plot <- ggplot(data=r, aes(x=pos, y=SNP.PP.H4, group=1)) +
-         ggtitle(paste(type, region, "Prior Prob Shared Causal Variant", sep=" - ")) +
+         ggtitle(paste(comparison, region, "Prior Prob Shared Causal Variant", sep=" - ")) +
          geom_point(aes(colour = cut(SNP.PP.H4, c(-Inf, .1, Inf)))) +
          scale_color_manual(name = "SNP.PP.H4",
                      values = c("(-Inf,0.1]" = "black",
@@ -228,31 +233,36 @@ plotRegionPriors  <- function(region, result, data, type, filename) {
 
 }
 
-plotRegionManhattan  <- function(region, data1, data2, trait1, trait2, type, filename) {
+plotRegionManhattan  <- function(region, trait1, trait2, comparison, filename) {
 
-    subset1 <- data1[with(data1, chr==region$chr & pos >= (region$start) & pos < (region$end)), ,drop=FALSE]
-    subset1  <- subset1[with(subset1, order(pos)), ]
 
-    overlap <- intersect(subset1$marker, data2$marker)
+
+    subset1 <- trait1$data[with(trait1$data, chr==region$chr & position >= (region$start) & position < (region$end)), ,drop=FALSE]
+    subset1  <- subset1[with(subset1, order(position)), ]
+    print("subset1")
+    print(dim(subset1))
+
+    overlap <- intersect(subset1$marker, trait2$data$marker)
 
     subset1.filtered <- subset1[subset1$marker %in% overlap, ,drop=FALSE]
     row.names(subset1.filtered)  <- subset1.filtered$marker
-    positions  <- subset1.filtered[,"pos", drop=FALSE]
+    positions  <- subset1.filtered[,"position", drop=FALSE]
 
 
-    subset2 <- data2[data2$marker %in% overlap, ,drop=FALSE]
+    subset2 <- trait2$data[trait2$data$marker %in% overlap, ,drop=FALSE]
     row.names(subset2)  <- subset2$marker
 
     subset2 <- merge(subset2, positions, by=0)
     row.names(subset2)  <- subset2$marker
-
+    print("subset2")
+    print(dim(subset2))
 
     ylim.upper  <- max(max(subset1$neg_log10_pvalue), max(subset2$neg_log10_pvalue))
 
     ## pushViewport(viewport(layout = grid.layout(3, 1)))
 
-    plot1 <- ggplot(data=subset1, aes(x=pos, y=neg_log10_pvalue, group=1)) +
-        ggtitle(paste(type, region$label, trait1, paste("N", nrow(subset1), sep="="), paste("pp", region$pp, sep="="), sep=" - ")) +
+    plot1 <- ggplot(data=subset1, aes(x=position, y=neg_log10_pvalue, group=1)) +
+        ggtitle(paste(comparison, region$label, trait1, paste("N", nrow(subset1), sep="="), paste("pp", region$pp, sep="="), sep=" - ")) +
         ylim(0, ylim.upper) +
         ylab("-log10 p") +
         geom_point(aes(colour = cut(neg_log10_pvalue, c(-Inf, 5, Inf)))) +
@@ -261,9 +271,10 @@ plotRegionManhattan  <- function(region, data1, data2, trait1, trait2, type, fil
                                   "(5, Inf]" = "red"),
                      labels = c("<= 1e-5", "> 1e-5"))
 
+        print("plot1")
 
-     plot1.filtered <- ggplot(data=subset1.filtered, aes(x=pos, y=neg_log10_pvalue, group=1)) +
-        ggtitle(paste(type, region$label, trait1, "filtered", paste("N", nrow(subset1.filtered), sep="="), paste("pp", region$pp, sep="="), sep=" - ")) +
+     plot1.filtered <- ggplot(data=subset1.filtered, aes(x=position, y=neg_log10_pvalue, group=1)) +
+        ggtitle(paste(comparison, region$label, trait1, "filtered", paste("N", nrow(subset1.filtered), sep="="), paste("pp", region$pp, sep="="), sep=" - ")) +
          ylim(0, ylim.upper) +
          ylab("-log10 p") +
         geom_point(aes(colour = cut(neg_log10_pvalue, c(-Inf, 5, Inf)))) +
@@ -273,8 +284,8 @@ plotRegionManhattan  <- function(region, data1, data2, trait1, trait2, type, fil
                      labels = c("<= 1e-5", "> 1e-5"))
 
 
-      plot2 <- ggplot(data=subset2, aes(x=pos, y=neg_log10_pvalue, group=1)) +
-        ggtitle(paste(type, region$label, trait2, paste("N", nrow(subset2), sep="="), paste("pp", region$pp, sep="="), sep=" - ")) +
+      plot2 <- ggplot(data=subset2, aes(x=position, y=neg_log10_pvalue, group=1)) +
+        ggtitle(paste(comparison, region$label, trait2, paste("N", nrow(subset2), sep="="), paste("pp", region$pp, sep="="), sep=" - ")) +
           ylim(0, ylim.upper) +
           ylab("-log10 p") +
         geom_point(aes(colour = cut(neg_log10_pvalue, c(-Inf, 5, Inf)))) +
