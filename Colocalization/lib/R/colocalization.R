@@ -2,6 +2,9 @@ library(dplyr)
 library(coloc)
 library(ggplot2)
 library(gridExtra)
+library(reshape)
+library(mvc)
+
 
 subEnvVars  <- function(text) {
     DATA_DIR <- Sys.getenv("DATA_DIR")
@@ -192,121 +195,89 @@ saveResult  <- function(regions, result, trait1, trait2, config) {
     summary
 }
 
-generateGraphics  <- function(regions, result, trait1, trait2, config) {
+generateGraphics  <- function(result, data, trait1, trait2, config) { ## data should have at least marker, position fields
     print("Outputting graphics")
-    for (row in 1:nrow(regions)) {
-        plotRegion  <- plotRegion  <- list(chr=regions[row, "chr"], start=regions[row,"start"], end=regions[row,"end"], label=regions[row, "label"], pp=result[[row]]$result$summary[["PP.H4.abf"]])
-        print(plotRegion$label)
-        ##region, trait1, trait2, type, filename) {
-        fileName  <- paste(config$comparison, plotRegion$label, "manhattan.pdf", sep="_")
-        plotRegionManhattan(plotRegion, trait1, trait2, config$comparison, paste(config$output_path, fileName, sep="/"))
-        fileName  <- paste(config$comparison, plotRegion$label, "shared_cvps.pdf", sep="_")
-        plotRegionPriors(plotRegion$label, result, data1, filePrefix, paste(config$output_path, fileName, sep="/"))
+
+    for (i in seq(1,length(result))) {
+        tad  <- names(result)[i]
+
+        print(paste(i, tad, sep=": "))
+        strokeVariant <- strsplit(tad, "_")[[1]][1]
+        print(strokeVariant)
+
+        r  <-  result[tad][[1]]$result$results ## result data frame
+
+        s <- result[tad][[1]]$result$summary ## result summary table
+
+        d.pp1 <- s[3]
+        d.pp2 <- s[4]
+        d.pp4 <- s[6]
+
+        data.s <- data[data$marker %in% r$snp, c("marker", "position")] # extract variants in tad region
+
+        df  <- merge(data.s, r, by.x="marker", by.y="snp") # map position to result
+        df.pvalues <- df # do it again, so we can have a dataframe for doing the manhattan plots
+
+        df$pp1 <- exp(df$lABF.df1 - logsum(df$lABF.df1)) # calc per variant pp1
+        df$pp2 <- exp(df$lABF.df2 - logsum(df$lABF.df2)) # calc per variant pp2
+
+        ## restructure dataframes so can generate one plot per variable
+        df <- melt(df[,c("marker","position","pp1","pp2","SNP.PP.H4")], id.vars=c("marker","position"))
+        df.pvalues <- melt(df.pvalues[,c("marker","position","pvalues.df1", "pvalues.df2" )], id.vars=c("marker","position"))
+
+        df.pvalues$value <- -1 * log(df.pvalues$value, 10) # -log10p
+
+        df$variable <- sub("pp1", paste0("pp1 (", trait1, ") = ", d.pp1) ,df$variable)
+        df$variable <- sub("pp2", paste0("pp2 (", trait2, ") = ", d.pp2) ,df$variable)
+        df$variable <- sub("SNP.PP.H4", paste0("pp4 (Both) = ", d.pp4) ,df$variable)
+
+        df$variable <- sub("pp1", paste0("pp1 (", trait1, ") = ", d.pp1) ,df$variable)
+        df$variable <- sub("pp2", paste0("pp2 (", trait2, ") = ", d.pp2) ,df$variable)
+        df$variable <- sub("SNP.PP.H4", paste0("pp4 (Both) = ", d.pp4) ,df$variable)
+
+        df.pvalues$variable <- sub("pvalues.df1", paste0("pvalues (", trait1 ,")"), df.pvalues$variable)
+        df.pvalues$variable <- sub("pvalues.df2", paste0("pvalues (", trait2 ,")"), df.pvalues$variable)
+
+        # find the top 10 snps
+        df.ord = df[order(df$value, decreasing=TRUE), ]
+        snps <- unique(df.ord$marker)[1:10]
+
+        df$label <- ifelse(df$marker %in% snps, df$marker,"")
+
+        df$label <- ifelse(df$marker == strokeVariant, "", df$label)
+        df$is_stroke_variant <- ifelse(df$marker == strokeVariant, df$marker,"")
+
+        df.pvalues$label <- ifelse(df.pvalues$marker %in% snps, df.pvalues$marker,"")
+
+        df.pvalues$label <- ifelse(df.pvalues$marker == strokeVariant, "", df.pvalues$label)
+        df.pvalues$is_stroke_variant <- ifelse(df.pvalues$marker == strokeVariant, df.pvalues$marker, "")
+
+        ttl <- paste0(trait1, ' & ', trait2, ' ', tad)
+        chr  <- strsplit(strsplit(tad, "_")[[1]][3], ":")[[1]][1]
+
+        pPlot <- ggplot(df, aes_string(x="position",y="value")) +
+            geom_point(data=subset(df,label==""),size=1.5) +
+            geom_point(data=subset(df,label!=""),col="red",size=1.5) +
+            geom_text(aes_string(label="label"),hjust=-0.1,vjust=0.5,size=2.5,col="red") +
+            geom_point(data=subset(df,is_stroke_variant!=""),col="blue",size=1.5) +
+            geom_text(aes_string(label="is_stroke_variant"),hjust=-0.1,vjust=0.5,size=2.5,col="blue") +
+            facet_grid(variable ~ .) +
+            theme(legend.position="none") + ylab("Posterior probability") +
+            ggtitle(ttl) + theme_bw()
+
+        mPlot <- ggplot(df.pvalues, aes_string(x="position",y="value")) +
+            geom_point(data=subset(df.pvalues,label==""),size=1.5) +
+            geom_point(data=subset(df.pvalues,label!=""),col="red",size=1.5) +
+            geom_text(aes_string(label="label"),hjust=-0.1,vjust=0.5,size=2.5,col="red") +
+            geom_point(data=subset(df.pvalues,is_stroke_variant!=""),col="blue",size=1.5) +
+            geom_text(aes_string(label="is_stroke_variant"),hjust=-0.1,vjust=0.5,size=2.5,col="blue") +
+            facet_grid(variable ~ .) +
+            theme(legend.position="none") + ylab("-log10 pvalue") +
+            ggtitle(ttl) + theme_bw()
+
+
+        ggsave(paste(gsub(":", "_", tad), ".pdf", sep=''), plot = marrangeGrob(grobs = list(PP=pPlot, M=mPlot), nrow=2, ncol=1), device="pdf")
+
     }
 }
 
-
-plotRegionPriors  <- function(region, result, data, comparison, filename) {
-    r  <- result[[region]]$result$results
-    subset  <- data[data$marker %in% r$snp, ]
-
-    row.names(subset)  <- subset$marker
-    row.names(r)  <- r$snp
-
-    positions  <- subset[, "pos", drop=FALSE]
-    r <- merge(r, positions, by=0)
-    row.names(r) <- r$snp
-
-     plot <- ggplot(data=r, aes(x=pos, y=SNP.PP.H4, group=1)) +
-         ggtitle(paste(comparison, region, "Prior Prob Shared Causal Variant", sep=" - ")) +
-         geom_point(aes(colour = cut(SNP.PP.H4, c(-Inf, .1, Inf)))) +
-         scale_color_manual(name = "SNP.PP.H4",
-                     values = c("(-Inf,0.1]" = "black",
-                                  "(0.1, Inf]" = "red"),
-                     labels = c("<= 10%", "> 10%")) +
-         geom_text(aes(label=ifelse(SNP.PP.H4>0.1,as.character(snp),'')),hjust=0,vjust=0)
-
-
-    pdf(filename)
-    print(plot)
-    dev.off()
-
-}
-
-plotRegionManhattan  <- function(region, trait1, trait2, comparison, filename) {
-
-
-
-    subset1 <- trait1$data[with(trait1$data, chr==region$chr & position >= (region$start) & position < (region$end)), ,drop=FALSE]
-    subset1  <- subset1[with(subset1, order(position)), ]
-    print("subset1")
-    print(dim(subset1))
-
-    overlap <- intersect(subset1$marker, trait2$data$marker)
-
-    subset1.filtered <- subset1[subset1$marker %in% overlap, ,drop=FALSE]
-    row.names(subset1.filtered)  <- subset1.filtered$marker
-    positions  <- subset1.filtered[,"position", drop=FALSE]
-
-
-    subset2 <- trait2$data[trait2$data$marker %in% overlap, ,drop=FALSE]
-    row.names(subset2)  <- subset2$marker
-
-    subset2 <- merge(subset2, positions, by=0)
-    row.names(subset2)  <- subset2$marker
-    print("subset2")
-    print(dim(subset2))
-
-    ylim.upper  <- max(max(subset1$neg_log10_pvalue), max(subset2$neg_log10_pvalue))
-
-    ## pushViewport(viewport(layout = grid.layout(3, 1)))
-
-    plot1 <- ggplot(data=subset1, aes(x=position, y=neg_log10_pvalue, group=1)) +
-        ggtitle(paste(comparison, region$label, trait1, paste("N", nrow(subset1), sep="="), paste("pp", region$pp, sep="="), sep=" - ")) +
-        ylim(0, ylim.upper) +
-        ylab("-log10 p") +
-        geom_point(aes(colour = cut(neg_log10_pvalue, c(-Inf, 5, Inf)))) +
-        scale_color_manual(name = "-log10 p",
-                     values = c("(-Inf,5]" = "black",
-                                  "(5, Inf]" = "red"),
-                     labels = c("<= 1e-5", "> 1e-5"))
-
-        print("plot1")
-
-     plot1.filtered <- ggplot(data=subset1.filtered, aes(x=position, y=neg_log10_pvalue, group=1)) +
-        ggtitle(paste(comparison, region$label, trait1, "filtered", paste("N", nrow(subset1.filtered), sep="="), paste("pp", region$pp, sep="="), sep=" - ")) +
-         ylim(0, ylim.upper) +
-         ylab("-log10 p") +
-        geom_point(aes(colour = cut(neg_log10_pvalue, c(-Inf, 5, Inf)))) +
-        scale_color_manual(name = "-log10 p",
-                     values = c("(-Inf,5]" = "black",
-                                  "(5, Inf]" = "red"),
-                     labels = c("<= 1e-5", "> 1e-5"))
-
-
-      plot2 <- ggplot(data=subset2, aes(x=position, y=neg_log10_pvalue, group=1)) +
-        ggtitle(paste(comparison, region$label, trait2, paste("N", nrow(subset2), sep="="), paste("pp", region$pp, sep="="), sep=" - ")) +
-          ylim(0, ylim.upper) +
-          ylab("-log10 p") +
-        geom_point(aes(colour = cut(neg_log10_pvalue, c(-Inf, 5, Inf)))) +
-        scale_color_manual(name = "-log10 p",
-                     values = c("(-Inf,5]" = "black",
-                                  "(5, Inf]" = "red"),
-                     labels = c("<= 1e-5", "> 1e-5"))
-
-    pdf(filename, width=12, height=12)
-    grid.arrange(plot1, plot1.filtered, plot2, ncol=1, nrow=3)
-    ##print(plot1, vp = viewport(layout.pos.row = 1, layout.pos.col = 1))
-    ##print(plot1.filtered, vp = viewport(layout.pos.row = 2, layout.pos.col = 1))
-    ## print(plot2, vp = viewport(layout.pos.row = 3, layout.pos.col = 1))
-    dev.off()
-    ##print(plot2, vp = viewport(layout.pos.row = 2, layout.pos.col = 1))
-
-    ##plot(subset1$pos, subset1$neg_log10_pvalue, col="red",
-     ##    main=paste(region$label, trait1), xlab="Position", ylab="-log10 pvalue")
-
-#    lines(subset2$pos, subset$neg_log10_pvalue, type = "o", col = "blue")
-
-
-
-}
