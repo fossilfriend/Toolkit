@@ -228,7 +228,7 @@ if __name__ == "__main__":
     parser.add_argument('-t', '--tadFile', help='full path to 3-column-tab-separated TAD domain bed file', required=True)
     parser.add_argument('-i', '--inputFile', help="full path to input file (list of variants or spans); tab delim: must contain the following fields: 'id', 'chromosome', 'start', 'end'.  For genes, expects gzipped GENCODE GTF file.  For custom gene list, treat as spans", required=True)
     parser.add_argument('--featureType', help='gene, variant, or span', choices=['gene', 'variant', 'span'], default = 'variant', required=True)
-    parser.add_argument('--prefix', help='prefix to add to output files (ignored for genes)')
+    parser.add_argument('--prefix', help='prefix to add to output files')
     parser.add_argument('-o', '--outputFilePath', help='output file path', required=True)
     parser.add_argument('--genomeBuild', default='hg19')
     parser.add_argument('-d', '--delimiter', default='\t')
@@ -244,8 +244,10 @@ if __name__ == "__main__":
     if args.featureType == 'gene':
         # geneRef = generate_gene_ref(args.gencodeFile) if args.generateGeneIndex or args.featureType == 'ld' else None
         geneRef = parse_gzipped_gtf(args.inputFile) 
-        indexFileName = path.join(args.outputFilePath, 'gene_index_' + args.genomeBuild + '_' + args.cellType + '.tsv') + extension
-        map_genes(geneRef, indexFileName)
+        indexFileName = args.prefix + '_gene_index_' + args.genomeBuild + '_' + args.cellType + '.tsv' + extension \
+            if args.prefix else \
+              'gene_index_' + args.genomeBuild + '_' + args.cellType + '.tsv' + extension 
+        map_genes(geneRef, path.join(args.outputFilePath, indexFileName))
     
     if args.featureType == 'span':
         indexFileName = args.prefix + '_span_index_' + args.genomeBuild + '_' + args.cellType + '.tsv' + extension \
