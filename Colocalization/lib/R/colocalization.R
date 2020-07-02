@@ -119,6 +119,7 @@ customColoc  <- function(regions, trait1, trait2, config) {
         result[[label]][["span"]]  <- list(chr=regions$chr[row], start=regions$start[row], end=regions$end[row])
         result[[label]][["summary"]] <- summary(r)
         result[[label]][["phenotype"]] <- regions$phenotype[row]
+        result[[label]][["coloc_abf"]] <- r
     }
     # print(str(result))
     print("Done.")
@@ -127,6 +128,15 @@ customColoc  <- function(regions, trait1, trait2, config) {
         sink()
     }
     result
+}
+
+customSensitivity  <- function(result, rule, config) {
+    for (i in seq(1,length(result))) {
+        tad  <- names(result)[i]
+        print(paste(i, tad, sep=": "))
+        abf  <-  result[tad][[1]]$coloc_abf ## result data frame
+        sensitivity(abf, rule)
+    }    
 }
 
 
@@ -206,17 +216,18 @@ extractPP <- function(colocR, hindex) {
 
 
 
-saveResult  <- function(regions, result, trait1, trait2, config) {
+saveResult  <- function(regions, result, trait1, trait2, config, isSensitivityAnalysis) {
     print("Writing summary")
     summary  <- writeColocResult(result, trait1$config$name, trait2$config$name, paste(config$output_path, paste(config$comparison, "result_summary.txt", sep="_"), sep="/"))
 
     print("Saving result workspace")
     fileName  <- paste(config$comparison, "result.RData.gz", sep="_")
-    save(result, summary, file=paste(config$output_path, fileName, sep="/"), compress=TRUE)
+    outputPath <- if (isSensitivityAnalysis) paste0(config$output_path, "/sensitivity") else config$output_path
+    save(result, summary, file=paste(outputPath, fileName, sep="/"), compress=TRUE)
     summary
 }
 
-generateGraphics  <- function(result, data, config) {
+generateGraphics  <- function(result, data, config, isSensitivityAnalysis) {
     ## data should have at least marker, position fields
     print("Outputting graphics")
     trait1  <- config$conditions[[1]]$phenotype
@@ -304,12 +315,13 @@ generateGraphics  <- function(result, data, config) {
             ggtitle(ttl) + theme_bw()
 
         fileName  <- paste0(gsub(":", "_", tad), ".pdf")
-        ggsave(paste(config$output_path, fileName , sep='/'), plot = marrangeGrob(grobs = list(PP=pPlot, M=mPlot), nrow=2, ncol=1), device="pdf")
+        outputPath <- if (isSensitivityAnalysis) paste0(config$output_path, "/sensitivity") else config$output_path
+        ggsave(paste(outputPath, fileName , sep='/'), plot = marrangeGrob(grobs = list(PP=pPlot, M=mPlot), nrow=2, ncol=1), device="pdf")
 
     }
 }
 
-writeSingleVariantResults  <- function(results, data, config) {
+writeSingleVariantResults  <- function(results, data, config, isSensitivityAnalysis) {
     output <- NULL
   
     for (i in seq(1,length(results))) {
@@ -347,7 +359,9 @@ writeSingleVariantResults  <- function(results, data, config) {
         write.table(df, filename, quote=FALSE,row.names=FALSE, sep="\t")
         output  <- rbind(output, df)
     }
-    filename = paste(config$output_path, "complete_single_variant_results.txt", sep="/")
+
+    outputPath <- if (isSensitivityAnalysis) paste0(config$output_path, "/sensitivity") else config$output_path
+    filename = paste(outputPath, "complete_single_variant_results.txt", sep="/")
     write.table(output, filename, quote=FALSE,row.names=FALSE, sep="\t")
     output
 }
