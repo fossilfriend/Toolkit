@@ -18,6 +18,19 @@ verifyDirectory  <- function(dirName) {
     dir.create(dirName)
 }
 
+  adjFreq <- function(x) {
+    if (x > 0.5) {
+      return (1.0 - x)
+	}
+    return(x)
+	      }
+
+    adjBetaSign <- function(x) {
+      if (x > 0.5) {
+        return(-1)
+	  }
+      return (1)
+		 }
 
 loadData <- function(config) {
     config$file <- subEnvVars(config$file)
@@ -27,13 +40,17 @@ loadData <- function(config) {
         sep = config$sep
     }
     data  <- read.table(config$file, sep=sep, header=T, stringsAsFactors=F)
-    if ("transform_pvalue" %in% names(config)) { # when pvalue is small, may come out of zero b/c of limits of python/perl/postgres
+    if ("transform_pvalue" %in% names(config)) { 
+      ## when pvalue is small, may come out of zero b/c of limits of python/perl/postgres
         if (config$transform_pvalue) {
             data$pvalue = 10 ^ (-1 * data$neg_log10_pvalue)
         }
     }
+    ## adjust maf/beta (make sure using maf/switch beta sign if necessary)
+    data$beta <- sapply(data$frequency, adjBetaSign) * data$beta
+    data$frequency <- sapply(data$frequency, adjFreq)
+    
     data
-
 }
 
 buildDetails <- function(config) {
@@ -81,18 +98,18 @@ customColoc  <- function(regions, trait1, trait2, config) {
         subset1 <- subset1[subset1$marker %in% overlap, ,drop=FALSE]
         row.names(subset1)  <- subset1$marker
 
-        adj  <- adjustDirectionality(subset1, subset2)
+        # adj  <- adjustDirectionality(subset1, subset2) # can't do this anymore b/c we adjusted beta when loading to supply MAF; no way to know which allele is the test allele
 
-        input1 <- list(snp=adj$subset1$marker, pvalues=adj$subset1$pvalue, type=details1$type, N=details1$nsamples, s=details1$ncases/details1$nsamples)
-        input2 <- list(snp=adj$subset2$marker,  pvalues=adj$subset2$pvalue, type=details2$type, N=details2$nsamples, s=details2$ncases/details2$nsamples)
+        input1 <- list(snp=subset1$marker, pvalues=subset1$pvalue, type=details1$type, N=details1$nsamples, s=details1$ncases/details1$nsamples)
+        input2 <- list(snp=subset2$marker,  pvalues=subset2$pvalue, type=details2$type, N=details2$nsamples, s=details2$ncases/details2$nsamples)
 
-        input1[["MAF"]]  <- adj$subset1$frequency
-        input2[["MAF"]]  <- adj$subset2$frequency
+        input1[["MAF"]]  <- subset1$frequency
+        input2[["MAF"]]  <- subset2$frequency
 
-        input1[["beta"]]  <-  adj$subset1$beta
-        input1[["betavar"]]  <- adj$subset1$variance
-        input2[["beta"]] <-  adj$subset2$beta
-        input2[["betavar"]] <-  adj$subset2$variance
+        input1[["beta"]]  <-  subset1$beta
+        input1[["betavar"]]  <- subset1$variance
+        input2[["beta"]] <-  subset2$beta
+        input2[["betavar"]] <-  subset2$variance
 
         r <- coloc.abf(input1, input2)
 
@@ -127,6 +144,8 @@ adjustDirectionality  <- function(data1, data2) {
 
             if (testAllele.data1 != testAllele.data2) {
                 print(paste("WARNING: Allele mismatch found for marker: ", marker, " - ", testAllele.data1 , "/", testAllele.data2, sep=""))
+
+                
                 beta.data2  <- data2[marker, "beta"]
 
                 data2[marker, "testallele"]  <- testAllele.data1
@@ -152,12 +171,19 @@ writeColocResult  <- function(colocR, trait1, trait2, fileName) {
             print(paste("WARNING: no result for", label, "as region span was 1bp."))
             next
         }
-        row  <-  list(label, colocR[[label]]$phenotype, colocR[[label]]$span$chr, colocR[[label]]$span$start, colocR[[label]]$span$end,
+        row  <-  list(label,
+                      colocR[[label]]$phenotype,
+                      colocR[[label]]$span$chr,
+                      colocR[[label]]$span$start,
+                      colocR[[label]]$span$end,
                       colocR[[label]]$span$end - colocR[[label]]$span$start,
-                      colocR[[label]]$nvariants$trait1, colocR[[label]]$nvariants$trait2,
-                  colocR[[label]]$result$summary[["PP.H0.abf"]], colocR[[label]]$result$summary[["PP.H1.abf"]],
-                  colocR[[label]]$result$summary[["PP.H2.abf"]], colocR[[label]]$result$summary[["PP.H3.abf"]],
-                  colocR[[label]]$result$summary[["PP.H4.abf"]])
+                      colocR[[label]]$nvariants$trait1,
+                      colocR[[label]]$nvariants$trait2,
+                      colocR[[label]]$result$summary[["PP.H0.abf"]],
+                      colocR[[label]]$result$summary[["PP.H1.abf"]],
+                      colocR[[label]]$result$summary[["PP.H2.abf"]],
+                      colocR[[label]]$result$summary[["PP.H3.abf"]],
+                      colocR[[label]]$result$summary[["PP.H4.abf"]])
 
         df <- rbind.data.frame(df, row, stringsAsFactors=FALSE, make.row.names=FALSE)
     }
@@ -180,11 +206,6 @@ extractPP <- function(colocR, hindex) {
 
 
 
-mPlot <- function(data, annotation) {
-    manhattan.plot(data$chr, data$position, data$pvalue, annotate=annotation)
-}
-
-
 saveResult  <- function(regions, result, trait1, trait2, config) {
     print("Writing summary")
     summary  <- writeColocResult(result, trait1$config$name, trait2$config$name, paste(config$output_path, paste(config$comparison, "result_summary.txt", sep="_"), sep="/"))
@@ -195,9 +216,13 @@ saveResult  <- function(regions, result, trait1, trait2, config) {
     summary
 }
 
-generateGraphics  <- function(result, data, trait1, trait2, config) { ## data should have at least marker, position fields
+generateGraphics  <- function(result, data, config) {
+    ## data should have at least marker, position fields
     print("Outputting graphics")
-
+    trait1  <- config$conditions[[1]]$phenotype
+    trait2  <- config$conditions[[2]]$phenotype
+    print(paste("Comparison:", trait1, "/", trait2, sep=" "))
+          
     for (i in seq(1,length(result))) {
         tad  <- names(result)[i]
 
@@ -205,6 +230,7 @@ generateGraphics  <- function(result, data, trait1, trait2, config) { ## data sh
         strokeVariant <- strsplit(tad, "_")[[1]][1]
         print(strokeVariant)
 
+        print("EXTRACTING RESULTS")
         r  <-  result[tad][[1]]$result$results ## result data frame
 
         s <- result[tad][[1]]$result$summary ## result summary table
@@ -213,6 +239,7 @@ generateGraphics  <- function(result, data, trait1, trait2, config) { ## data sh
         d.pp2 <- s[4]
         d.pp4 <- s[6]
 
+        print("WARNING: Subsetting data")
         data.s <- data[data$marker %in% r$snp, c("marker", "position")] # extract variants in tad region
 
         df  <- merge(data.s, r, by.x="marker", by.y="snp") # map position to result
@@ -238,7 +265,8 @@ generateGraphics  <- function(result, data, trait1, trait2, config) { ## data sh
         df.pvalues$variable <- sub("pvalues.df1", paste0("pvalues (", trait1 ,")"), df.pvalues$variable)
         df.pvalues$variable <- sub("pvalues.df2", paste0("pvalues (", trait2 ,")"), df.pvalues$variable)
 
-        # find the top 10 snps
+        ## find the top 10 snps
+        print("WARNING: Finding top 10 variants")
         df.ord = df[order(df$value, decreasing=TRUE), ]
         snps <- unique(df.ord$marker)[1:10]
 
@@ -275,9 +303,52 @@ generateGraphics  <- function(result, data, trait1, trait2, config) { ## data sh
             theme(legend.position="none") + ylab("-log10 pvalue") +
             ggtitle(ttl) + theme_bw()
 
-
-        ggsave(paste(gsub(":", "_", tad), ".pdf", sep=''), plot = marrangeGrob(grobs = list(PP=pPlot, M=mPlot), nrow=2, ncol=1), device="pdf")
+        fileName  <- paste0(gsub(":", "_", tad), ".pdf")
+        ggsave(paste(config$output_path, fileName , sep='/'), plot = marrangeGrob(grobs = list(PP=pPlot, M=mPlot), nrow=2, ncol=1), device="pdf")
 
     }
+}
+
+writeSingleVariantResults  <- function(results, data, config) {
+    output <- NULL
+  
+    for (i in seq(1,length(results))) {
+        tad  <- names(results)[i]
+
+        
+        print(paste0("Extracting single variants results for TAD: ", tad))
+        marker <- strsplit(tad, "_")[[1]][1]
+
+        r  <-  results[tad][[1]]$result$results
+
+        s <- results[tad][[1]]$result$summary
+
+        d.pp1 <- s[3]
+        d.pp2 <- s[4]
+        d.pp3 <- s[5]
+        d.pp4 <- s[6]
+
+        data.s <- data[data$marker %in% r$snp, c("marker", "pvalue", "position")]
+
+        ##print(dim(r))
+        ##print(dim(data.s))
+
+        df  <- merge(data.s, r, by.x="marker", by.y="snp")
+
+        ##print(head(df))
+
+
+        df$pp1 <- exp(df$lABF.df1 - logsum(df$lABF.df1))
+        df$pp2 <- exp(df$lABF.df2 - logsum(df$lABF.df2))
+        df$tad  <- tad
+        df$tad_marker  <- marker
+
+        filename = paste(config$output_path, paste0(gsub(":", "_", tad), "_single_variant_results.txt"), sep="/")
+        write.table(df, filename, quote=FALSE,row.names=FALSE, sep="\t")
+        output  <- rbind(output, df)
+    }
+    filename = paste(config$output_path, "complete_single_variant_results.txt", sep="/")
+    write.table(output, filename, quote=FALSE,row.names=FALSE, sep="\t")
+    output
 }
 
