@@ -1,0 +1,138 @@
+{ "sensitivity": true,
+  "analysis": 
+[
+    {
+	"regions": "$DATA_DIR/regions/stroke_dixon2015_span_index_hg19_H1-ESC.tsv",
+	"conditions": [
+	    {
+		"name": "AD_IGAP2019",
+		"phenotype": "AD",
+		"file": "$DATA_DIR/igap2019/NG00075.txt",
+		"ncases": 21982,
+		"ncontrols": 41944 , 
+		"transform_pvalue": true, 
+		"sep":"\t"
+	    },
+	    {
+		"name": "MEGASTROKE_AS",
+		"phenotype": "Stroke (All)",
+		"file": "$DATA_DIR/megastroke/data/MEGASTROKE.1.AS.EUR.out_processed.txt", 
+		"ncases": 40585, 
+		"ncontrols": 406111, 
+		"transform_pvalue":false
+	    }
+	],
+	"output_path": "$WORKING_DIR/coloc/ALZ_AS",
+	"log": "ALZ_AS.log",
+	"comparison": "ALZ_AS"
+    },
+
+    {
+	"skip": true,
+	"regions": "$DATA_DIR/regions/stroke_dixon2015_span_index_hg19_H1-ESC.tsv",
+	"conditions": [
+	    {
+		"name": "AD_IGAP2019",
+		"phenotype": "AD",
+		"file": "$DATA_DIR/igap2019/NG00075.txt",
+		"ncases": 21982,
+		"ncontrols": 41944 , 
+		"transform_pvalue": true, 
+		"sep":"\t"
+	    },
+	    {
+		"name": "MEGASTROKE_AIS",
+		"phenotype": "Stroke (AIS)",
+		"file": "$DATA_DIR/megastroke/data/MEGASTROKE.2.AIS.EUR.out_processed.txt",
+		"ncases": 40585, 
+		"ncontrols": 406111, 
+		"transform_pvalue":false
+	    }
+	],
+	"output_path": "$WORKING_DIR/coloc/ALZ_AIS",
+	"log": "ALZ_AIS.log",
+	"comparison": "ALZ_AIS"
+    },
+
+    {
+	"skip": true,
+	"regions": "$DATA_DIR/regions/stroke_dixon2015_span_index_hg19_H1-ESC.tsv",
+	"conditions": [
+	    {
+		"name": "AD_IGAP2019",
+		"phenotype": "AD",
+		"file": "$DATA_DIR/igap2019/NG00075.txt",
+		"ncases": 21982,
+		"ncontrols": 41944 , 
+		"transform_pvalue": true, 
+		"sep":"\t"
+	    },
+	    {
+		"name": "MEGASTROKE_LAS",
+		"phenotype": "Stroke (LAS)",
+		"file": "$DATA_DIR/megastroke/data/MEGASTROKE.3.LAS.EUR.out_processed.txt",
+		"ncases": 40585, 
+		"ncontrols": 406111, 
+		"transform_pvalue":false
+	    }
+	],
+	"output_path": "$WORKING_DIR/coloc/ALZ_LAS",
+	"log": "ALZ_LAS.log",
+	"comparison": "ALZ_LAS"
+    },
+    
+    {
+	"skip": true,
+	"regions": "$DATA_DIR/regions/stroke_dixon2015_span_index_hg19_H1-ESC.tsv",
+	"conditions": [
+	    {
+		"name": "AD_IGAP2019",
+		"phenotype": "AD",
+		"file": "$DATA_DIR/igap2019/NG00075.txt",
+		"ncases": 21982,
+		"ncontrols": 41944 , 
+		"transform_pvalue": true, 
+		"sep":"\t"
+	    },
+	    {
+		"name": "MEGASTROKE_CES",
+		"phenotype": "Stroke (CES)",
+		"file": "$DATA_DIR/megastroke/data/MEGASTROKE.4.CES.EUR.out_processed.txt",
+		"ncases": 40585, 
+		"ncontrols": 406111, 
+		"transform_pvalue":false
+	    }
+	],
+	"output_path": "$WORKING_DIR/coloc/ALZ_CES",
+	"log": "ALZ_CES.log",
+	"comparison": "ALZ_CES"
+    },
+
+    {
+	"skip": true,
+	"regions": "$DATA_DIR/regions/stroke_dixon2015_span_index_hg19_H1-ESC.tsv",
+	"conditions": [
+	    {
+		"name": "AD_IGAP2019",
+		"phenotype": "AD",
+		"file": "$DATA_DIR/igap2019/NG00075.txt",
+		"ncases": 21982,
+		"ncontrols": 41944 , 
+		"transform_pvalue": true, 
+		"sep":"\t"
+	    },
+	    {
+		"name": "MEGASTROKE_SVS",
+		"phenotype": "Stroke (SVS)",
+		"file": "$DATA_DIR/megastroke/data/MEGASTROKE.5.SVS.EUR.out_processed.txt",
+		"ncases": 40585, 
+		"ncontrols": 406111, 
+		"transform_pvalue":false
+	    }
+	],
+	"output_path": "$WORKING_DIR/coloc/ALZ_SVS",
+	"log": "ALZ_SVS.log",
+	"comparison": "ALZ_SVS"
+    }
+]
+}
