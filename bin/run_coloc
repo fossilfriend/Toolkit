@@ -61,9 +61,9 @@ for (analysis in config$analysis) {
     }
 
     
-    # summary <- saveResult(regions, result, trait1, trait2, analysis, config$sensitivity)
+    summary <- saveResult(regions, result, trait1, trait2, analysis, config$sensitivity)
     
-    # generateGraphics(result, trait1$data, analysis, config$sensitivity)
-    # writeSingleVariantResults(result, trait1$data,  analysis, config$sensitivity)
+    generateGraphics(result, trait1$data, analysis, config$sensitivity)
+    writeSingleVariantResults(result, trait1$data,  analysis, config$sensitivity)
 }
 
