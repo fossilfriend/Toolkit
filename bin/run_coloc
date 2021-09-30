@@ -1,0 +1,69 @@
+#!/usr/bin/env Rscript
+library(rjson)
+library(coloc)
+source(paste(Sys.getenv("GUS_HOME"), "lib", "R", "Colocalization", "colocalization.R", sep="/"))
+
+args = commandArgs(trailingOnly=TRUE)
+config  <- NULL
+# test if there is at least one argument: if not, return an error
+if (!exists("configFileName")) {
+    if (length(args)==0) {
+        stop("Please supply full path to json config file", call.=FALSE)
+    }
+    config <- fromJSON(file = args[1])
+} else {
+    config  <- fromJSON(file = configFileName)
+}
+
+for (analysis in config$analysis) {
+    
+    if (!is.null(analysis$skip)) {
+        print(paste0("WARNING: Skipping comparison - ", analysis$comparison))
+        next
+    }
+
+    print(paste0("WARNING: Processing comparison - ", analysis$comparison))
+    
+    analysis$output_path  <- subEnvVars(analysis$output_path)
+    verifyDirectory(analysis$output_path)
+    verifyDirectory(paste0(analysis$output_path,"/sensitivity"))
+    analysis$log <- paste(analysis$output_path, analysis$log, sep="/")
+    ## cat("Loading Regions", file=logFh)
+
+    analysis$regions  <- subEnvVars(analysis$regions)
+    regions <- read.table(analysis$regions, header=TRUE, sep="\t", stringsAsFactors = FALSE)
+    regions$label = paste(regions$variant, regions$TAD, sep="_")
+    regions$start  <- regions$TAD_start
+    regions$end  <- regions$TAD_end
+
+    if (!exists("trait1") || analysis$conditions[[1]]$file != trait1$config$file) {
+        trait1 <- list(config=analysis$conditions[[1]], data=loadData(analysis$conditions[[1]]))
+    }
+    else {
+        print("Condition 1 already loaded")
+    }
+    if (!exists("trait2") || analysis$conditions[[2]]$file != trait2$config$file) {
+        trait2 <- list(config=analysis$conditions[[2]], data=loadData(analysis$conditions[[2]]))
+    }
+    else {
+        print("Condition 2 already loaded")
+    }
+
+    print("Running Colocalization Analysis")
+    result <- customColoc(regions, trait1, trait2, analysis)
+
+    if (config$sensitivity) {
+        print("Running Sensitivity Analysis")
+        print(result[[1]][["summary"]])
+        # customSensitivity(result, rule="H4>0.02", analysis)
+        # customSensitivity(result, rule="H3>0.02", analysis)
+        # customSensitivity(result, rule="H3>0.02 & H3 > H4", analysis)
+    }
+
+    
+    # summary <- saveResult(regions, result, trait1, trait2, analysis, config$sensitivity)
+    
+    # generateGraphics(result, trait1$data, analysis, config$sensitivity)
+    # writeSingleVariantResults(result, trait1$data,  analysis, config$sensitivity)
+}
+
